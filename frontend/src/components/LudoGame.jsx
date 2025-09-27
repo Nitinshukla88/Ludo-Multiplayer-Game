@@ -176,25 +176,25 @@ const LudoGame = () => {
   };
 
   const getCellColor = (row, col) => {
-    if (row <= 2 && col <= 2) return 'bg-red-200';
-    if (row <= 2 && col >= 12) return 'bg-blue-200';
-    if (row >= 12 && col >= 12) return 'bg-yellow-200';
-    if (row >= 12 && col <= 2) return 'bg-green-200';
-    
-    if ((row === 6 && col === 1) || (row === 1 && col === 8) || 
-        (row === 8 && col === 13) || (row === 13 && col === 6)) {
-      return 'bg-gray-300';
-    }
-    
-    if (row === 7 && col >= 1 && col <= 5) return 'bg-red-100';
-    if (col === 7 && row >= 1 && row <= 5) return 'bg-blue-100';
-    if (row === 7 && col >= 9 && col <= 13) return 'bg-yellow-100';
-    if (col === 7 && row >= 9 && row <= 13) return 'bg-green-100';
-    
-    if (row >= 6 && row <= 8 && col >= 6 && col <= 8) return 'bg-gray-400';
-    
+  if (row < 6 && col < 6) return 'bg-red-300';
+  if (row < 6 && col > 8) return 'bg-blue-300';
+  if (row > 8 && col > 8) return 'bg-yellow-300';
+  if (row > 8 && col < 6) return 'bg-green-300';
+
+  if (row >= 6 && row <= 8 && col >= 6 && col <= 8) return 'bg-gray-400';
+  if (row === 7 && col < 6) return 'bg-red-200';
+  if (col === 7 && row < 6) return 'bg-blue-200';
+  if (row === 7 && col > 8) return 'bg-yellow-200';
+  if (col === 7 && row > 8) return 'bg-green-200';
+
+  if ((row === 7 && col >= 6 && col <= 8) ||
+      (col === 7 && row >= 6 && row <= 8)) {
     return 'bg-white';
-  };
+  }
+
+  return 'bg-white';
+};
+
 
   const renderPiece = (row, col) => {
     const pieces = Object.entries(gameState.pieces).filter(([_, piece]) => 
