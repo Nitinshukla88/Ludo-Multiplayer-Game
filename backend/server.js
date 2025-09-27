@@ -15,7 +15,6 @@ const io = new Server(server, {
   }
 });
 
-// Game state management
 const rooms = new Map();
 const playerRooms = new Map();
 
@@ -86,18 +85,26 @@ class GameRoom {
     const value = Math.floor(Math.random() * 6) + 1;
     this.gameState.diceValue = value;
     
-    // Calculate next player
-    const currentIndex = this.colors.indexOf(this.gameState.currentPlayer);
-    let nextIndex = (currentIndex + 1) % 4;
-    let nextPlayer = this.colors[nextIndex];
+    const canMove = this.canPlayerMove(this.gameState.currentPlayer, value);
     
-    // Skip players who aren't in the game
-    while (!this.hasPlayer(nextPlayer) && nextIndex !== currentIndex) {
-      nextIndex = (nextIndex + 1) % 4;
-      nextPlayer = this.colors[nextIndex];
+    return { 
+      value, 
+      nextPlayer: this.gameState.currentPlayer, 
+      canMove 
+    };
+  }
+
+  canPlayerMove(color, diceValue) {
+    for (let i = 0; i < 4; i++) {
+      const piece = this.gameState.pieces[`${color}-${i}`];
+      if (piece.isFinished) continue;
+      
+      if (piece.isHome && diceValue === 6) return true;
+      
+      if (!piece.isHome && !piece.isFinished) return true;
     }
     
-    return { value, nextPlayer };
+    return false;
   }
 
   hasPlayer(color) {
@@ -120,16 +127,21 @@ class GameRoom {
       green: [13, 6]
     };
 
+    if (piece.isHome && diceValue !== 6) {
+      return null; 
+    }
+
     if (piece.isHome && diceValue === 6) {
       piece.position = startPositions[piece.color];
       piece.isHome = false;
       piece.pathIndex = 0;
-
       this.gameState.scores[piece.color] += 10;
     } else if (!piece.isHome && !piece.isFinished) {
       piece.pathIndex += diceValue;
       
-      const captures = this.checkCaptures(pieceId);
+      this.updatePiecePosition(piece);
+      
+      captures = this.checkCaptures(pieceId);
       if (captures.length > 0) {
         captures.forEach(capturedId => {
           const capturedPiece = this.gameState.pieces[capturedId];
@@ -150,8 +162,6 @@ class GameRoom {
       
       this.gameState.scores[piece.color] += diceValue;
       
-      this.updatePiecePosition(piece);
-      
       if (piece.pathIndex >= 57) {
         piece.isFinished = true;
         this.gameState.scores[piece.color] += 50;
@@ -167,7 +177,6 @@ class GameRoom {
       const currentIndex = this.colors.indexOf(this.gameState.currentPlayer);
       let nextIndex = (currentIndex + 1) % 4;
       let nextPlayer = this.colors[nextIndex];
-      
       while (!this.hasPlayer(nextPlayer) && nextIndex !== currentIndex) {
         nextIndex = (nextIndex + 1) % 4;
         nextPlayer = this.colors[nextIndex];
@@ -175,13 +184,13 @@ class GameRoom {
       
       this.gameState.currentPlayer = nextPlayer;
     }
-
     this.gameState.diceValue = null;
     
     return {
       pieces: this.gameState.pieces,
       scores: this.gameState.scores,
-      captures
+      captures,
+      nextPlayer: this.gameState.currentPlayer
     };
   }
 
@@ -203,7 +212,6 @@ class GameRoom {
     const piece = this.gameState.pieces[pieceId];
     const captures = [];
     
-    // Check if this piece lands on another piece
     Object.entries(this.gameState.pieces).forEach(([otherId, otherPiece]) => {
       if (otherId !== pieceId && 
           otherPiece.color !== piece.color &&
@@ -237,11 +245,9 @@ class GameRoom {
   }
 }
 
-// Socket.IO connection handling
 io.on('connection', (socket) => {
   console.log('User connected:', socket.id);
 
-  // Send current rooms list
   const roomsList = Array.from(rooms.values()).map(room => ({
     id: room.id,
     players: room.players.size
@@ -265,7 +271,6 @@ io.on('connection', (socket) => {
       gameState: room.gameState
     });
 
-    // Broadcast updated rooms list
     io.emit('roomsList', Array.from(rooms.values()).map(r => ({
       id: r.id,
       players: r.players.size
@@ -297,13 +302,17 @@ io.on('connection', (socket) => {
       gameState: room.gameState
     });
 
-    // Notify other players
     socket.to(roomId).emit('gameStateUpdate', {
       players: room.getPlayersInfo(),
-      gameState: room.gameState
+      gameState: {
+        currentPlayer: room.gameState.currentPlayer,
+        diceValue: room.gameState.diceValue,
+        pieces: room.gameState.pieces,
+        scores: room.gameState.scores,
+        winner: room.gameState.winner
+      }
     });
 
-    // Broadcast updated rooms list
     io.emit('roomsList', Array.from(rooms.values()).map(r => ({
       id: r.id,
       players: r.players.size
@@ -316,13 +325,38 @@ io.on('connection', (socket) => {
 
     const player = room.players.get(socket.id);
     if (!player || player.color !== room.gameState.currentPlayer) return;
-
-    const { value, nextPlayer } = room.rollDice();
     
-    io.to(roomId).emit('diceRolled', {
-      value,
-      nextPlayer
-    });
+    if (room.gameState.diceValue !== null) return;
+
+    const { value, nextPlayer, canMove } = room.rollDice();
+    
+    if (!canMove && value !== 6) {
+      const currentIndex = room.colors.indexOf(room.gameState.currentPlayer);
+      let nextIndex = (currentIndex + 1) % 4;
+      let newNextPlayer = room.colors[nextIndex];
+      
+      while (!room.hasPlayer(newNextPlayer) && nextIndex !== currentIndex) {
+        nextIndex = (nextIndex + 1) % 4;
+        newNextPlayer = room.colors[nextIndex];
+      }
+      
+      room.gameState.currentPlayer = newNextPlayer;
+      room.gameState.diceValue = null; 
+      
+      io.to(roomId).emit('diceRolled', {
+        value,
+        nextPlayer: newNextPlayer,
+        canMove: false,
+        turnPassed: true
+      });
+    } else {
+      io.to(roomId).emit('diceRolled', {
+        value,
+        nextPlayer,
+        canMove,
+        turnPassed: false
+      });
+    }
   });
 
   socket.on('movePiece', ({ roomId, pieceId, diceValue }) => {
@@ -334,11 +368,28 @@ io.on('connection', (socket) => {
     
     if (!player || !piece || player.color !== piece.color) return;
     if (player.color !== room.gameState.currentPlayer) return;
+    if (room.gameState.diceValue !== diceValue) return; 
 
     const result = room.movePiece(pieceId, diceValue);
     
     if (result) {
-      io.to(roomId).emit('piecesMoved', result);
+      io.to(roomId).emit('piecesMoved', {
+        pieces: result.pieces,
+        scores: result.scores,
+        captures: result.captures,
+        currentPlayer: result.nextPlayer
+      });
+
+      io.to(roomId).emit('gameStateUpdate', {
+        players: room.getPlayersInfo(),
+        gameState: {
+          currentPlayer: room.gameState.currentPlayer,
+          diceValue: room.gameState.diceValue,
+          pieces: room.gameState.pieces,
+          scores: room.gameState.scores,
+          winner: room.gameState.winner
+        }
+      });
       
       if (room.gameState.winner) {
         io.to(roomId).emit('gameWon', {
@@ -347,6 +398,25 @@ io.on('connection', (socket) => {
         });
       }
     }
+  });
+
+  socket.on('requestSync', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    const player = room.players.get(socket.id);
+    if (!player) return;
+
+    socket.emit('gameStateUpdate', {
+      players: room.getPlayersInfo(),
+      gameState: {
+        currentPlayer: room.gameState.currentPlayer,
+        diceValue: room.gameState.diceValue,
+        pieces: room.gameState.pieces,
+        scores: room.gameState.scores,
+        winner: room.gameState.winner
+      }
+    });
   });
 
   socket.on('disconnect', () => {
@@ -364,13 +434,9 @@ io.on('connection', (socket) => {
           
           room.removePlayer(socket.id);
           playerRooms.delete(socket.id);
-          
-          // Remove room if empty
           if (room.players.size === 0) {
             rooms.delete(roomId);
           }
-          
-          // Broadcast updated rooms list
           io.emit('roomsList', Array.from(rooms.values()).map(r => ({
             id: r.id,
             players: r.players.size

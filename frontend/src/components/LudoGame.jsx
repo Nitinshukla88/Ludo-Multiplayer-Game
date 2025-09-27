@@ -86,31 +86,52 @@ const LudoGame = () => {
         gameId: roomId,
         myColor: color,
         players,
-        ...serverGameState
+        currentPlayer: serverGameState.currentPlayer,
+        diceValue: serverGameState.diceValue,
+        pieces: serverGameState.pieces,
+        scores: serverGameState.scores,
+        winner: serverGameState.winner
       }));
     });
 
-    socket.on('gameStateUpdate', (newGameState) => {
+    socket.on('gameStateUpdate', ({ players, gameState }) => {
       setGameState(prev => ({
         ...prev,
-        ...newGameState
+        players: players || prev.players,
+        currentPlayer: gameState?.currentPlayer || prev.currentPlayer,
+        diceValue: gameState?.diceValue !== undefined ? gameState.diceValue : prev.diceValue,
+        pieces: gameState?.pieces || prev.pieces,
+        scores: gameState?.scores || prev.scores,
+        winner: gameState?.winner || prev.winner
       }));
     });
 
-    socket.on('diceRolled', ({ value, nextPlayer }) => {
+    socket.on('diceRolled', ({ value, nextPlayer, canMove, turnPassed }) => {
       setGameState(prev => ({
         ...prev,
         diceValue: value,
         currentPlayer: nextPlayer,
         isRolling: false
       }));
+      
+      if (turnPassed) {
+        console.log(`Player rolled ${value} but has no valid moves. Turn passed to ${nextPlayer}.`);
+      } else if (!canMove) {
+        console.log(`Player rolled ${value} but has no valid moves.`);
+      } else if (value === 6) {
+        console.log(`Player rolled ${value}! Move a piece and roll again.`);
+      } else {
+        console.log(`Player rolled ${value}. Move a piece and turn will pass.`);
+      }
     });
 
-    socket.on('piecesMoved', ({ pieces, scores, captures }) => {
+    socket.on('piecesMoved', ({ pieces, scores, captures, currentPlayer }) => {
       setGameState(prev => ({
         ...prev,
         pieces,
-        scores
+        scores,
+        currentPlayer: currentPlayer || prev.currentPlayer,
+        diceValue: null 
       }));
       
       if (captures && captures.length > 0) {
@@ -130,6 +151,9 @@ const LudoGame = () => {
 
     socket.on('playerDisconnected', ({ color }) => {
       console.log(`Player ${color} disconnected`);
+      if (gameState.gameId) {
+        socket.emit('requestSync', { roomId: gameState.gameId });
+      }
     });
 
     return () => {
@@ -142,6 +166,16 @@ const LudoGame = () => {
       socket.off('playerDisconnected');
     };
   }, []);
+
+  useEffect(() => {
+    if (!lobbyState.inLobby && gameState.gameId) {
+      const syncInterval = setInterval(() => {
+        socket.emit('requestSync', { roomId: gameState.gameId });
+      }, 10000);
+
+      return () => clearInterval(syncInterval);
+    }
+  }, [lobbyState.inLobby, gameState.gameId]);
 
   const createRoom = () => {
     if (lobbyState.playerName.trim()) {
@@ -156,7 +190,9 @@ const LudoGame = () => {
   };
 
   const rollDice = () => {
-    if (gameState.currentPlayer === gameState.myColor && !gameState.isRolling) {
+    if (gameState.currentPlayer === gameState.myColor && 
+        !gameState.isRolling && 
+        gameState.diceValue === null) { 
       setGameState(prev => ({ ...prev, isRolling: true }));
       socket.emit('rollDice', { roomId: gameState.gameId });
     }
@@ -167,6 +203,11 @@ const LudoGame = () => {
     
     const piece = gameState.pieces[pieceId];
     if (!piece || piece.color !== gameState.myColor) return;
+
+    if (piece.isHome && gameState.diceValue !== 6) {
+      console.log('Need 6 to move piece from home!');
+      return;
+    }
 
     socket.emit('movePiece', {
       roomId: gameState.gameId,
@@ -352,21 +393,34 @@ const LudoGame = () => {
                   </div>
                   <button
                     onClick={rollDice}
-                    disabled={gameState.currentPlayer !== gameState.myColor || gameState.isRolling}
+                    disabled={gameState.currentPlayer !== gameState.myColor || 
+                             gameState.isRolling || 
+                             gameState.diceValue !== null} 
                     className="w-full px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
                   >
-                    {gameState.isRolling ? 'Rolling...' : 'Roll Dice'}
+                    {gameState.isRolling ? 'Rolling...' : 
+                     gameState.diceValue !== null ? 'Move Piece' : 'Roll Dice'}
                   </button>
                 </div>
               </div>
 
               <div className="bg-gray-100 rounded-lg p-4">
-                <h3 className="text-lg font-semibold mb-2">Game Info</h3>
+                <h3 className="text-lg font-semibold mb-2">Game Rules</h3>
                 <div className="space-y-1 text-sm">
                   <p>• Click dice to roll</p>
-                  <p>• Click your pieces to move</p>
-                  <p>• Get 6 to leave home</p>
-                  <p>• Capture opponents for points</p>
+                  <p>• Get 6 to move piece from home</p>
+                  <p>• Get 6 for another turn</p>
+                  <p>• Non-6 = turn passes after move</p>
+                  <p>• Capture opponents for bonus</p>
+                  {gameState.currentPlayer !== gameState.myColor && (
+                    <p className="text-blue-600 font-semibold mt-2">• Waiting for {gameState.currentPlayer}'s turn</p>
+                  )}
+                  {gameState.currentPlayer === gameState.myColor && gameState.diceValue && (
+                    <p className="text-green-600 font-semibold mt-2">• Click a piece to move!</p>
+                  )}
+                  {gameState.currentPlayer === gameState.myColor && !gameState.diceValue && (
+                    <p className="text-orange-600 font-semibold mt-2">• Your turn - roll dice!</p>
+                  )}
                 </div>
               </div>
 
