@@ -38,10 +38,10 @@ ludo-game/
 ```
 
 ## Installation & Setup
-
+<!-- 
 ### Prerequisites
 - Node.js (v14 or higher)
-- npm or yarn
+- npm or yarn -->
 
 ### Backend Setup
 
@@ -106,7 +106,7 @@ The frontend will run on `http://localhost:5173`
 - **Move Piece**: Click on your colored pieces to move them
 - **View Scores**: Real-time scores displayed for each player
 
-## Scoring System
+<!-- ## Scoring System
 
 | Action | Points |
 |--------|--------|
@@ -114,7 +114,7 @@ The frontend will run on `http://localhost:5173`
 | Movement | Equal to dice value |
 | Capturing Opponent | 20 |
 | Piece Finishing | 50 |
-| Winning Game | 100 |
+| Winning Game | 100 | -->
 
 ## Technical Stack
 
@@ -184,7 +184,7 @@ NODE_ENV=development
 
 ## Troubleshooting
 
-### Common Issues
+<!-- ### Common Issues
 
 1. **Socket connection fails**:
    - Ensure backend is running on port 3001
@@ -198,8 +198,8 @@ NODE_ENV=development
 3. **Game state not syncing**:
    - Check network tab for WebSocket connections
    - Verify room ID is correct
-   - Check console for error messages
-
+   - Check console for error messages -->
+<!-- 
 ## Future Enhancements
 
 - [ ] Database integration for persistent game state
@@ -209,11 +209,11 @@ NODE_ENV=development
 - [ ] Tournament mode
 - [ ] Chat system
 - [ ] Sound effects and animations
-- [ ] Mobile app versions
-
+- [ ] Mobile app versions -->
+<!-- 
 ## Contributing
 
-Feel free to fork this project and submit pull requests for any improvements.
+Feel free to fork this project and submit pull requests for any improvements. -->
 
 ## License
 
